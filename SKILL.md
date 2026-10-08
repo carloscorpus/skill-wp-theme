@@ -5,7 +5,7 @@ description: Scaffold a new WordPress theme (Local WP) with Vite + JS + Tailwind
 
 # wp-vite-theme
 
-Generate the standard theme base. Only names change per project. Templates live in `templates/` (`*.tpl`), placeholders use `{{...}}`.
+Generate the standard theme base. Only names change per project. Templates live in `templates/` (`*.tpl`), placeholders use `{{...}}`. `scripts/scaffold.mjs` (next to this file) copies and fills them; never copy or replace templates by hand.
 
 ## Placeholders
 
@@ -22,17 +22,13 @@ The Vite `base` needs no placeholder: `vite.config.ts` derives the theme folder 
 
 ## Steps
 
-1. **Detect context.** cwd should be `.../wp-content/themes/<slug>`. Slug = folder name. `PREFIX` = slug with `-` → `_`. Ask the user only for what is missing (visible name, author, URI). Never guess author. Also grep the site's `wp-config.php` (`../../../wp-config.php`) for `WP_ENVIRONMENT_TYPE`: it must be `local` or `development`, otherwise dev mode never activates (WP defaults to `production`). Warn the user if not.
-2. **Check existing files.** List what already exists. Never overwrite silently — report conflicts and ask.
-3. **Copy templates** from `templates/` to the theme root, dropping `.tpl`, replacing all placeholders. Structure:
+1. **Detect context.** cwd should be `.../wp-content/themes/<slug>`. Slug = folder name (the script derives it and `PREFIX`/`PREFIX_UPPER`). Ask the user only for what is missing (visible name, author, URI). Never guess author. Also grep the site's `wp-config.php` (`../../../wp-config.php`) for `WP_ENVIRONMENT_TYPE`: it must be `local` or `development`, otherwise dev mode never activates (WP defaults to `production`). Warn the user if not.
+2. **Check existing files.** Run a dry run from the theme root (`<skill>` = this skill's folder):
    ```
-   style.css  functions.php  header.php  footer.php  index.php  .gitignore  CLAUDE.md
-   inc/{setup,enqueue,cleanup}.php
-   template-parts/
-   src/css/input.css  src/js/main.js
-   vite.config.ts  pnpm-workspace.yaml
+   node <skill>/scripts/scaffold.mjs --name "<name>" --author "<author>" --uri "<uri>" --dry-run
    ```
-   Do NOT create `index.html` (not needed in WP themes) nor ACF files (user creates those from the admin).
+   It prints JSON with `create` and `conflicts`. If `conflicts` is non-empty, show them and ask the user, file by file, whether to overwrite or keep. Never decide for them.
+3. **Generate files.** Same command without `--dry-run`, plus `--overwrite a,b` / `--skip c,d` covering every conflict (paths exactly as listed). Exit codes: `0` ok, `1` invalid input (fix and ask the user if needed), `2` unresolved conflicts, `3` leftover placeholders (a template uses an unknown `{{KEY}}`: fix the script/template, do not patch output by hand). On non-zero exit nothing is written. Do NOT create `index.html` (not needed in WP themes) nor ACF files (user creates those from the admin).
 4. **package.json.** If missing: `pnpm init`, then set `"private": true`, `"type": "module"`, `"description": "Tema WordPress <slug>"`, `"license": "UNLICENSED"`, `"engines": { "node": ">=<major of node --version>" }`, scripts `dev: vite` and `build: vite build` only (no `preview`, it does not apply to a WP theme). Remove `main` and the default `test` script.
 5. **Install deps.** Security config lives in `pnpm-workspace.yaml` (copied in step 3). Then:
    ```
@@ -46,12 +42,17 @@ The Vite `base` needs no placeholder: `vite.config.ts` derives the theme folder 
 6. **Verify integrations are still current.**
    - WebFetch `https://tailwindcss.com/docs/installation/using-vite` before trusting `vite.config.ts.tpl` / `input.css.tpl`. If the major changed the plugin name or CSS import, adapt to the docs and update the templates.
    - Grep `node_modules/vite/dist/node/index.d.ts` for `@deprecated` on options the config uses (e.g. `rolldownOptions` vs `rollupOptions`). Update the template if something is deprecated.
-7. **Validate.**
-   - `php -l` on every PHP file, using Local's PHP (`%APPDATA%/Local/lightning-services/php-*/bin/win32/php.exe`; `php` is usually not in PATH).
+7. **Validate.** Detect the OS first (`node -p process.platform`: `win32`, `darwin`, `linux`).
+   - `php -l` on every PHP file. Use `php` if it is in PATH; otherwise Local's PHP (newest `php-*` version):
+     - win32: `%APPDATA%/Local/lightning-services/php-*/bin/win32/php.exe`
+     - darwin: `~/Library/Application Support/Local/lightning-services/php-*/bin/darwin*/bin/php`
+     - linux: `~/.config/Local/lightning-services/php-*/bin/linux/bin/php`
+     If the path does not match, search `lightning-services/` for a `php` binary. If none exists, report that PHP lint was skipped.
    - `pnpm build` → confirm `dist/manifest.json` has keys `src/css/input.css` and `src/js/main.js`, and no `hot` file exists. Then delete `dist/`.
-   - `pnpm dev` → `hot` appears. Ask the user to stop it with Ctrl+C and confirm `hot` disappears (signals cannot be delivered from this shell on Windows).
-8. **Final grep** for leftover `{{` in generated files. Must be zero.
-9. Tell user: `pnpm dev`, activate theme in WP admin, and the Deploy rules from the generated `CLAUDE.md`.
+   - `pnpm dev` (in background) → `hot` appears. Then stop it and confirm `hot` disappears:
+     - darwin/linux: send SIGINT to the Vite process (`kill -INT <pid>`).
+     - win32: signals cannot be delivered from this shell; ask the user to stop it with Ctrl+C.
+8. Tell user: `pnpm dev`, activate theme in WP admin, and the Deploy rules from the generated `CLAUDE.md`.
 
 ## Rules baked into templates
 
